@@ -11,6 +11,16 @@
 
 #include "ofMain.h"
 
+class TLMessageEvent : ofEventArgs {
+public:
+    ofParameterGroup params;
+    TLMessageEvent() {
+    }
+    
+    static ofEvent<TLMessageEvent> events;
+};
+ofEvent<TLMessageEvent> TLMessageEvent::events;
+
 class ofxTL;
 
 // DONE:Sequenceを順番に実行
@@ -43,7 +53,12 @@ public:
     virtual void mouseDragged(int x, int y, int button) {}
     virtual void mousePressed(int x, int y, int button) {}
     virtual void mouseReleased(int x, int y, int button) {}
-    virtual void gotMessage(ofMessage msg) {}
+    virtual void gotMessage(TLMessageEvent &msg) {}
+    void sendMessage(ofParameterGroup param) {
+        TLMessageEvent event;
+        event.params = param;
+        ofNotifyEvent(TLMessageEvent::events, event);
+    }
 private:
     int    _frame;
     ofxTL &_tl;
@@ -101,6 +116,12 @@ public:
             vector< int >::iterator cIter = find( acceptKeys.begin(),acceptKeys.end() , key );
             if(cIter != acceptKeys.end()) inputedKey = key;
         }
+        virtual void gotMessage(TLMessageEvent &event) {
+            // "input:key"メッセージを受け取った際、強制的にキー入力
+            if(event.params.contains("input:key")) {
+                 inputedKey = event.params.getInt("input:key");
+            }
+        }
     private:
         int waitFrame;
         vector<int> acceptKeys;
@@ -110,7 +131,7 @@ public:
     ofxTL() {
         currentSeq  = NULL;
         frameCount = 0;
-
+        ofAddListener(TLMessageEvent::events,this, &ofxTL::gotMessage);
         
     }
     ~ofxTL() {
@@ -157,6 +178,11 @@ public:
     const ofxSeq &getSeq() {
         return *currentSeq;
     }
+    void sendMessage(ofParameterGroup param) {
+        TLMessageEvent event;
+        event.params = param;
+        ofNotifyEvent(TLMessageEvent::events, event);
+    }
     virtual void keyPressed(int key) {
         currentSeq->keyPressed(key);
     }
@@ -175,7 +201,7 @@ public:
     virtual void mouseReleased(int x, int y, int button) {
         currentSeq->mouseReleased(x,y,button);
     }
-    virtual void gotMessage(ofMessage msg) {
+    virtual void gotMessage(TLMessageEvent &msg) {
         currentSeq->gotMessage(msg);
     }
 private:
