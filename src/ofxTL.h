@@ -11,6 +11,12 @@
 
 #include "ofMain.h"
 
+#define LAMBDA(rettype, ARG_LIST, BODY)        \
+({                                             \
+rettype __lambda_funcion__ ARG_LIST { BODY; }  \
+__lambda_funcion__;                            \
+})
+
 class TLMessageEvent : ofEventArgs {
 public:
     ofParameterGroup params;
@@ -29,16 +35,20 @@ class ofxTL;
 // DONE:Sequenceの途中で別Sequenceに移行←返値によってTL側で次のSeqを決める
 // DONE:Sequence終了時の処理をSeqと戻り値によって変更
 // DONE:TLの並列実行
-// TODO:TL間のメッセージング
+// DONE:TL間のメッセージング
+// TODO:Sequenceの終了条件・終了後の遷移SEQを関数ポインタで変更できるように
 // TODO:Sequenceの親子関係（必要？）
+
+typedef int (*get_next_seq)(ofParameterGroup *, int);
 
 class ofxSeq {
 public:
     ofxSeq(ofxTL &tl, string seqId) : _tl(tl), _seqId(seqId){
 
     }
-    virtual void setup(const ofParameterGroup *parm) {
+    virtual void setup(const ofParameterGroup *parm) {//,  ) {
         _frame = 0;
+//        this->getNextSeq = getNextSeq;
     }
     virtual bool update(ofParameterGroup *param) {
         _frame ++;
@@ -47,6 +57,17 @@ public:
     int    frame() { return _frame;}
     ofxTL &tl() { return _tl;}
     const string &seqId() const {return _seqId;}
+    void sendMessage(ofParameterGroup param) {
+        TLMessageEvent event;
+        event.params = param;
+        ofNotifyEvent(TLMessageEvent::events, event);
+    }
+    get_next_seq getNextSeq() {
+        return _getNextSeq;
+    }
+    void setNextSeq(get_next_seq nextSeq) {
+        _getNextSeq = nextSeq;
+    }
     virtual void keyPressed(int key) {}
     virtual void keyReleased(int key) {}
     virtual void mouseMoved(int x, int y ) {}
@@ -54,15 +75,12 @@ public:
     virtual void mousePressed(int x, int y, int button) {}
     virtual void mouseReleased(int x, int y, int button) {}
     virtual void gotMessage(TLMessageEvent &msg) {}
-    void sendMessage(ofParameterGroup param) {
-        TLMessageEvent event;
-        event.params = param;
-        ofNotifyEvent(TLMessageEvent::events, event);
-    }
+    
 private:
     int    _frame;
     ofxTL &_tl;
     string _seqId;
+    get_next_seq _getNextSeq;
 };
 
 class ofxTL {
@@ -150,7 +168,12 @@ public:
         return false;
     }
     virtual void draw() {}
-    virtual int getNextSeqIdx(ofxSeq *seq, ofParameterGroup *parm) {
+    int getNextSeqIdx(ofxSeq *seq, ofParameterGroup *parm) {
+        get_next_seq nextSeqFunc = seq->getNextSeq();
+        if(nextSeqFunc != NULL) {
+            int nextSeq = nextSeqFunc(parm, seqIdx);
+            if(nextSeq >= 0)return nextSeq;
+        }
         int nextSeq = seqIdx + 1;
         if(nextSeq >= sequences.size()) nextSeq = 0;
         return nextSeq;
@@ -161,7 +184,8 @@ public:
     int getFrameCount() {
         return frameCount;
     }
-    void addSequence(ofxSeq *seq) {
+    void addSequence(ofxSeq *seq, get_next_seq nextSeq = NULL) {
+        seq->setNextSeq(nextSeq);
         sequences.push_back(seq);
     }
     void setSeqIdx(int idx, ofParameterGroup *parm) {
